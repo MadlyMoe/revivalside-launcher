@@ -53,7 +53,6 @@ export const Home = () => {
   };
 
   const listenerButton = () => {
-    return { icon: <PauseIcon color="relative" />, text: "Stop Server" };
     if (listener.state === "running") return { icon: <PauseIcon color="relative" />, text: "Stop Server" };
     if (listener.state === "starting") return { icon: <Spinner />, text: listener.details || "Starting..." };
     if (listener.state === "stopping") return { icon: <Spinner />, text: "Stopping..." };
@@ -106,7 +105,7 @@ export const Home = () => {
               <ActionButton
                 tooltip="Freeze Client"
                 disabled={!settings.sourceClientPath || !!busyAction || listener.state !== "stopped"}
-                onClick={() => void freezeClient()}
+                onClick={() => void runAction("freeze-client")}
               >
                 {busyAction === "freeze-client" ? <Spinner /> : <SnowflakeIcon />}
               </ActionButton>
@@ -169,23 +168,13 @@ export const Home = () => {
             onClick={toggleListener}
             disabled={listenerBusy}
             tooltip={listener.state === "starting" ? "Preparing local services" : undefined}
-            state={
-              true
-                ? {
-                    mode: "progress",
-                    percent: 10,
-                    secondsLeft: 1212,
-                    paused: false,
-                    label: "Downloading...",
-                  }
-                : {
-                    mode: "action",
-                    icon: button.icon,
-                    text: button.text,
-                    hoverIcon: listener.state === "running" ? <PauseIcon color="relative" /> : undefined,
-                    hoverText: listener.state === "running" ? "Stop Server" : undefined,
-                  }
-            }
+            state={{
+              mode: "action",
+              icon: button.icon,
+              text: button.text,
+              hoverIcon: listener.state === "running" ? <PauseIcon color="relative" /> : undefined,
+              hoverText: listener.state === "running" ? "Stop Server" : undefined,
+            }}
           />
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
