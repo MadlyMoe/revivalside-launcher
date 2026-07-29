@@ -242,6 +242,7 @@ fn run_action_sync(
         "build-cache",
         "set-server-time",
         "clear-server-time",
+        "export-cross-save",
         "extract-cross-save",
         "refresh-wiki-cache",
         "refresh-cutscene-cache",
