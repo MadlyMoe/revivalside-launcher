@@ -242,6 +242,8 @@ fn run_action_sync(
         "launch-client",
         "verify-assets",
         "build-cache",
+        "prepare-modside-assets",
+        "extract-modside-assets",
         "set-server-time",
         "clear-server-time",
         "export-cross-save",

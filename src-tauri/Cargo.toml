@@ -1,6 +1,6 @@
 [package]
 name = "revivalside-launcher"
-version = "0.3.6"
+version = "0.4.0-beta.1"
 description = "RevivalSide desktop launcher"
 authors = ["RevivalSide contributors", "timeworn"]
 edition = "2021"

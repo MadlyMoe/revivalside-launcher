@@ -28,6 +28,8 @@ import { ActionButton } from "@/games/revivalside/pages/Home/ActionButton";
 import { useLauncherState } from "@/components/providers/launcher-state-provider";
 import { GameSettings } from "@/games/revivalside/pages/Home/GameSettings";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { confirm, message } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import { ServerLaunchButton } from "@/games/revivalside/pages/Home/server-launch-button";
 
 export const Home = () => {
@@ -36,6 +38,7 @@ export const Home = () => {
   const [open, setOpen] = useState(false);
   const [showGameSettings, setShowGameSettings] = useState(false);
   const [openWikiWhenReady, setOpenWikiWhenReady] = useState(false);
+  const [modSideProgress, setModSideProgress] = useState(0);
   const listener = services.listener;
   const wiki = services.wiki;
   const listenerBusy = listener.state === "starting" || listener.state === "stopping";
@@ -46,6 +49,15 @@ export const Home = () => {
       void openUrl(`http://127.0.0.1:${settings.wikiPort}/`);
     }
   }, [openWikiWhenReady, settings.wikiPort, wiki.state]);
+
+  useEffect(() => {
+    const unlisten = listen<{ type: string; action: string; progress: number }>("launcher-event", ({ payload }) => {
+      if (payload.type === "action-progress" && payload.action === "extract-modside-assets") {
+        setModSideProgress(payload.progress);
+      }
+    });
+    return () => { void unlisten.then((stop) => stop()); };
+  }, []);
 
   const toggleListener = () => {
     if (listener.state === "running") void stopService("listener");
@@ -72,8 +84,32 @@ export const Home = () => {
     }
   };
 
+  const openModSide = async () => {
+    const { assets } = await runAction<{
+      assets: { ready: boolean; requiredGiB: number; availableGiB: number; hasSpace: boolean };
+    }>("prepare-modside-assets");
+    if (!assets.ready) {
+      const warning = `Mod:Side needs to create the full extracted client asset library before it opens. At least ${assets.requiredGiB} GB of free space is required; this drive currently has ${assets.availableGiB} GB available.`;
+      if (!assets.hasSpace) {
+        await message(warning, { title: "Not enough free space", kind: "error" });
+        return;
+      }
+      const accepted = await confirm(`${warning}\n\nContinue with extraction?`, {
+        title: "Prepare Mod:Side assets",
+        kind: "warning",
+        okLabel: "Extract assets",
+        cancelLabel: "Cancel",
+      });
+      if (!accepted) return;
+      setModSideProgress(0);
+      await runAction("extract-modside-assets", { confirmed: true });
+    }
+    await openUrl(`http://127.0.0.1:${settings.httpPort}/mod-side?view=loader`);
+  };
+
   const button = listenerButton();
   const routingReady = snapshot?.routing.state === "ready";
+  const modSideBusy = busyAction?.includes("modside-assets") ?? false;
 
   return (
     <>
@@ -110,11 +146,38 @@ export const Home = () => {
                 {busyAction === "freeze-client" ? <Spinner /> : <SnowflakeIcon />}
               </ActionButton>
               <ActionButton
-                tooltip="Relaunch Frozen Client"
-                disabled={listener.state !== "running" || !snapshot?.frozenClientRoot || !!busyAction}
-                onClick={() => void runAction("launch-client")}
+                tooltip={modSideBusy ? `Preparing Mod:Side assets (${modSideProgress}%)` : "Open Mod:Side"}
+                disabled={listener.state !== "running" || !!busyAction}
+                onClick={() => void openModSide()}
               >
-                {busyAction === "launch-client" ? <Spinner /> : <RocketIcon />}
+                {modSideBusy ? (
+                  <span
+                    className="relative grid size-7 place-items-center"
+                    role="progressbar"
+                    aria-label="Preparing Mod:Side assets"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={modSideProgress}
+                  >
+                    <svg className="absolute inset-0 size-7 -rotate-90" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle className="text-foreground/25" cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+                      <circle
+                        className="text-primary transition-[stroke-dashoffset] duration-300"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        pathLength="100"
+                        strokeDasharray="100"
+                        strokeDashoffset={100 - modSideProgress}
+                      />
+                    </svg>
+                    <RocketIcon className="size-3.5" />
+                  </span>
+                ) : <RocketIcon />}
               </ActionButton>
             </div>
 
