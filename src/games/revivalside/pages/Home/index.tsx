@@ -121,36 +121,39 @@ export const Home = () => {
   };
 
   const openModSide = async () => {
-    const { assets } = await runAction<{
-      assets: {
-        ready: boolean;
-        requiredGiB: number;
-        availableGiB: number;
-        hasSpace: boolean;
-      };
-    }>("prepare-modside-assets");
-    if (!assets.ready) {
-      const warning = `Mod:Side needs to create the full extracted client asset library before it opens. At least ${assets.requiredGiB} GB of free space is required; this drive currently has ${assets.availableGiB} GB available.`;
-      if (!assets.hasSpace) {
-        await message(warning, {
-          title: "Not enough free space",
-          kind: "error",
-        });
-        return;
+    try {
+      const { assets } = await runAction<{
+        assets: {
+          ready: boolean;
+          requiredGiB: number;
+          availableGiB: number;
+          hasSpace: boolean;
+        };
+      }>("prepare-modside-assets");
+      if (!assets.ready) {
+        const warning = `Asset:Side, Story:Side, Unit:Side, Combat:Side, and Spine Studio need the extracted client asset library. Mod Creator and Mod Loader work without it. Full extraction requires at least ${assets.requiredGiB} GB of free space; this drive currently has ${assets.availableGiB} GB available.`;
+        if (!assets.hasSpace) {
+          await message(warning, {
+            title: "Not enough free space",
+            kind: "info",
+          });
+        } else {
+          const accepted = await confirm(
+            `${warning}\n\nExtract now, or open the core tools only?`,
+            {
+              title: "Mod:Side asset library",
+              kind: "warning",
+              okLabel: "Extract assets",
+              cancelLabel: "Core tools only",
+            },
+          );
+          if (accepted) {
+            setModSideProgress(0);
+            await runAction("extract-modside-assets", { confirmed: true });
+          }
+        }
       }
-      const accepted = await confirm(
-        `${warning}\n\nContinue with extraction?`,
-        {
-          title: "Prepare Mod:Side assets",
-          kind: "warning",
-          okLabel: "Extract assets",
-          cancelLabel: "Cancel",
-        },
-      );
-      if (!accepted) return;
-      setModSideProgress(0);
-      await runAction("extract-modside-assets", { confirmed: true });
-    }
+    } catch { /* Creator and Loader still open when asset preparation is unavailable. */ }
     if (modside.state === "running") {
       await openUrl(
         `http://127.0.0.1:${settings.modSidePort}/mod-side`,
@@ -202,9 +205,10 @@ export const Home = () => {
                 {wiki.state === "starting" ? <Spinner /> : <BookOpenIcon />}
               </ActionButton>
               <ActionButton
-                tooltip="Freeze Client"
+                tooltip={snapshot?.frozenClientRoot ? "Frozen client already exists" : "Freeze Client"}
                 disabled={
                   !settings.sourceClientPath ||
+                  !!snapshot?.frozenClientRoot ||
                   !!busyAction ||
                   listener.state !== "stopped"
                 }

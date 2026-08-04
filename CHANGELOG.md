@@ -11,6 +11,7 @@
 ### Changed
 
 - Open Mod:Side now lands on its home page and starts the required Mod:Side and Combat:Side services automatically.
+- Mod Creator and Mod Loader can open without extracting the full client asset library; asset-backed workspace cards remain locked until extraction completes.
 - Updated the Discord button to the RevivalSide community invite.
 - Restored persistent settings, responsive scrolling, real progress reporting, and single-instance window focus.
 
@@ -19,6 +20,7 @@
 - Fixed Open log files when the logs directory has not been created by a service yet.
 - Fixed launcher action/schema regressions and hidden Windows process handling.
 - Fixed frozen-client routing and managed service lifecycle handling.
+- Prevented repeated client freezes when a frozen client is already installed.
 
 ## 0.4.0-beta.1 - 2026-08-04
 

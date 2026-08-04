@@ -13,6 +13,7 @@ export const ActionButton: FC<ActionButtonProps> = ({ tooltip, className, childr
       className={cn("backdrop-blur-3xl bg-secondary/20", className)}
       variant="secondary"
       size="action-icon-sm"
+      disabled={disabled}
       {...props}
     >
       {children}

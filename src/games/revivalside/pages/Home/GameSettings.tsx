@@ -150,6 +150,7 @@ export const GameSettings: FC<ComponentProps<typeof Dialog>> = ({
                         onClick={() => void runAction("freeze-client")}
                         disabled={
                           !settings.sourceClientPath ||
+                          !!snapshot?.frozenClientRoot ||
                           !!busyAction ||
                           listenerLocked
                         }
