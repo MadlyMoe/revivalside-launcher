@@ -45,7 +45,7 @@ struct LogEvent {
 fn service_snapshot(services: &Arc<Mutex<HashMap<String, ServiceProcess>>>) -> Value {
     let current = services.lock().unwrap();
     let mut result = serde_json::Map::new();
-    for name in ["listener", "wiki", "capture"] {
+    for name in ["listener", "wiki", "modside", "capture"] {
         let status = current.get(name).map_or(
             ServiceStatus {
                 state: "stopped".into(),
@@ -429,7 +429,7 @@ async fn start_launcher_service(
     state: State<'_, LauncherState>,
     service: String,
 ) -> Result<Value, String> {
-    if !["listener", "wiki", "capture"].contains(&service.as_str()) {
+    if !["listener", "wiki", "modside", "capture"].contains(&service.as_str()) {
         return Err(format!("Unsupported launcher service: {service}"));
     }
     {

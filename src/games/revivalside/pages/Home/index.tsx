@@ -1,5 +1,9 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,15 +37,27 @@ import { listen } from "@tauri-apps/api/event";
 import { ServerLaunchButton } from "@/games/revivalside/pages/Home/server-launch-button";
 
 export const Home = () => {
-  const { snapshot, settings, services, busyAction, lastError, clearError, startService, stopService, runAction } =
-    useLauncherState();
+  const {
+    snapshot,
+    settings,
+    services,
+    busyAction,
+    lastError,
+    clearError,
+    startService,
+    stopService,
+    runAction,
+  } = useLauncherState();
   const [open, setOpen] = useState(false);
   const [showGameSettings, setShowGameSettings] = useState(false);
   const [openWikiWhenReady, setOpenWikiWhenReady] = useState(false);
+  const [openModSideWhenReady, setOpenModSideWhenReady] = useState(false);
   const [modSideProgress, setModSideProgress] = useState(0);
   const listener = services.listener;
   const wiki = services.wiki;
-  const listenerBusy = listener.state === "starting" || listener.state === "stopping";
+  const modside = services.modside;
+  const listenerBusy =
+    listener.state === "starting" || listener.state === "stopping";
 
   useEffect(() => {
     if (openWikiWhenReady && wiki.state === "running") {
@@ -51,12 +67,29 @@ export const Home = () => {
   }, [openWikiWhenReady, settings.wikiPort, wiki.state]);
 
   useEffect(() => {
-    const unlisten = listen<{ type: string; action: string; progress: number }>("launcher-event", ({ payload }) => {
-      if (payload.type === "action-progress" && payload.action === "extract-modside-assets") {
-        setModSideProgress(payload.progress);
-      }
-    });
-    return () => { void unlisten.then((stop) => stop()); };
+    if (openModSideWhenReady && modside.state === "running") {
+      setOpenModSideWhenReady(false);
+      void openUrl(
+        `http://127.0.0.1:${settings.modSidePort}/mod-side`,
+      );
+    }
+  }, [openModSideWhenReady, settings.modSidePort, modside.state]);
+
+  useEffect(() => {
+    const unlisten = listen<{ type: string; action: string; progress: number }>(
+      "launcher-event",
+      ({ payload }) => {
+        if (
+          payload.type === "action-progress" &&
+          payload.action === "extract-modside-assets"
+        ) {
+          setModSideProgress(payload.progress);
+        }
+      },
+    );
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
   }, []);
 
   const toggleListener = () => {
@@ -65,9 +98,12 @@ export const Home = () => {
   };
 
   const listenerButton = () => {
-    if (listener.state === "running") return { icon: <PauseIcon color="relative" />, text: "Stop Server" };
-    if (listener.state === "starting") return { icon: <Spinner />, text: listener.details || "Starting..." };
-    if (listener.state === "stopping") return { icon: <Spinner />, text: "Stopping..." };
+    if (listener.state === "running")
+      return { icon: <PauseIcon color="relative" />, text: "Stop Server" };
+    if (listener.state === "starting")
+      return { icon: <Spinner />, text: listener.details || "Starting..." };
+    if (listener.state === "stopping")
+      return { icon: <Spinner />, text: "Stopping..." };
     return { icon: <PlayIcon color="relative" />, text: "Start Game" };
   };
 
@@ -86,25 +122,47 @@ export const Home = () => {
 
   const openModSide = async () => {
     const { assets } = await runAction<{
-      assets: { ready: boolean; requiredGiB: number; availableGiB: number; hasSpace: boolean };
+      assets: {
+        ready: boolean;
+        requiredGiB: number;
+        availableGiB: number;
+        hasSpace: boolean;
+      };
     }>("prepare-modside-assets");
     if (!assets.ready) {
       const warning = `Mod:Side needs to create the full extracted client asset library before it opens. At least ${assets.requiredGiB} GB of free space is required; this drive currently has ${assets.availableGiB} GB available.`;
       if (!assets.hasSpace) {
-        await message(warning, { title: "Not enough free space", kind: "error" });
+        await message(warning, {
+          title: "Not enough free space",
+          kind: "error",
+        });
         return;
       }
-      const accepted = await confirm(`${warning}\n\nContinue with extraction?`, {
-        title: "Prepare Mod:Side assets",
-        kind: "warning",
-        okLabel: "Extract assets",
-        cancelLabel: "Cancel",
-      });
+      const accepted = await confirm(
+        `${warning}\n\nContinue with extraction?`,
+        {
+          title: "Prepare Mod:Side assets",
+          kind: "warning",
+          okLabel: "Extract assets",
+          cancelLabel: "Cancel",
+        },
+      );
       if (!accepted) return;
       setModSideProgress(0);
       await runAction("extract-modside-assets", { confirmed: true });
     }
-    await openUrl(`http://127.0.0.1:${settings.httpPort}/mod-side?view=loader`);
+    if (modside.state === "running") {
+      await openUrl(
+        `http://127.0.0.1:${settings.modSidePort}/mod-side`,
+      );
+      return;
+    }
+    setOpenModSideWhenReady(true);
+    try {
+      await startService("modside");
+    } catch {
+      setOpenModSideWhenReady(false);
+    }
   };
 
   const button = listenerButton();
@@ -131,26 +189,45 @@ export const Home = () => {
               <ActionButton
                 tooltip="User Manager"
                 disabled={listener.state !== "running"}
-                onClick={() => openUrl(`http://127.0.0.1:${settings.httpPort}/user-manager`)}
+                onClick={() =>
+                  openUrl(`http://127.0.0.1:${settings.httpPort}/user-manager`)
+                }
               >
                 <UsersRoundIcon />
               </ActionButton>
-              <ActionButton tooltip={wiki.state === "starting" ? "Starting Wiki" : "Wiki"} onClick={openWiki}>
+              <ActionButton
+                tooltip={wiki.state === "starting" ? "Starting Wiki" : "Wiki"}
+                onClick={openWiki}
+              >
                 {wiki.state === "starting" ? <Spinner /> : <BookOpenIcon />}
               </ActionButton>
               <ActionButton
                 tooltip="Freeze Client"
-                disabled={!settings.sourceClientPath || !!busyAction || listener.state !== "stopped"}
+                disabled={
+                  !settings.sourceClientPath ||
+                  !!busyAction ||
+                  listener.state !== "stopped"
+                }
                 onClick={() => void runAction("freeze-client")}
               >
-                {busyAction === "freeze-client" ? <Spinner /> : <SnowflakeIcon />}
+                {busyAction === "freeze-client" ? (
+                  <Spinner />
+                ) : (
+                  <SnowflakeIcon />
+                )}
               </ActionButton>
               <ActionButton
-                tooltip={modSideBusy ? `Preparing Mod:Side assets (${modSideProgress}%)` : "Open Mod:Side"}
-                disabled={listener.state !== "running" || !!busyAction}
+                tooltip={
+                  modSideBusy
+                    ? `Preparing Mod:Side assets (${modSideProgress}%)`
+                    : modside.state === "starting"
+                      ? "Starting Mod:Side"
+                      : "Open Mod:Side"
+                }
+                disabled={!!busyAction || modside.state === "stopping"}
                 onClick={() => void openModSide()}
               >
-                {modSideBusy ? (
+                {modSideBusy || modside.state === "starting" ? (
                   <span
                     className="relative grid size-7 place-items-center"
                     role="progressbar"
@@ -159,8 +236,20 @@ export const Home = () => {
                     aria-valuemax={100}
                     aria-valuenow={modSideProgress}
                   >
-                    <svg className="absolute inset-0 size-7 -rotate-90" viewBox="0 0 24 24" aria-hidden="true">
-                      <circle className="text-foreground/25" cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+                    <svg
+                      className="absolute inset-0 size-7 -rotate-90"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        className="text-foreground/25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      />
                       <circle
                         className="text-primary transition-[stroke-dashoffset] duration-300"
                         cx="12"
@@ -177,18 +266,28 @@ export const Home = () => {
                     </svg>
                     <RocketIcon className="size-3.5" />
                   </span>
-                ) : <RocketIcon />}
+                ) : (
+                  <RocketIcon />
+                )}
               </ActionButton>
             </div>
 
             <Card className="bg-card/20 backdrop-blur-3xl py-3">
               <CardContent className="space-y-1 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className={cn("size-2 rounded-full", routingReady ? "bg-green-500" : "bg-amber-400")} />
-                  <span>{snapshot?.routing.message ?? "Checking client routing..."}</span>
+                  <span
+                    className={cn(
+                      "size-2 rounded-full",
+                      routingReady ? "bg-green-500" : "bg-amber-400",
+                    )}
+                  />
+                  <span>
+                    {snapshot?.routing.message ?? "Checking client routing..."}
+                  </span>
                 </div>
                 <div className="text-muted-foreground">
-                  Gameplay cache: {snapshot?.gameplay.description ?? "Checking..."}
+                  Gameplay cache:{" "}
+                  {snapshot?.gameplay.description ?? "Checking..."}
                 </div>
                 <div className="text-muted-foreground">
                   {listener.state === "starting"
@@ -210,7 +309,9 @@ export const Home = () => {
                 <CardContent>
                   <CollapsibleTrigger asChild>
                     <button className="w-full uppercase flex items-stretch group">
-                      <span className="font-semibold uppercase tracking-widest">Logs</span>
+                      <span className="font-semibold uppercase tracking-widest">
+                        Logs
+                      </span>
                       <ChevronDownIcon className="ml-auto rotate-0 group-data-[state=open]:rotate-180 transition-transform" />
                     </button>
                   </CollapsibleTrigger>
@@ -230,13 +331,21 @@ export const Home = () => {
           <ServerLaunchButton
             onClick={toggleListener}
             disabled={listenerBusy}
-            tooltip={listener.state === "starting" ? "Preparing local services" : undefined}
+            tooltip={
+              listener.state === "starting"
+                ? "Preparing local services"
+                : undefined
+            }
             state={{
               mode: "action",
               icon: button.icon,
               text: button.text,
-              hoverIcon: listener.state === "running" ? <PauseIcon color="relative" /> : undefined,
-              hoverText: listener.state === "running" ? "Stop Server" : undefined,
+              hoverIcon:
+                listener.state === "running" ? (
+                  <PauseIcon color="relative" />
+                ) : undefined,
+              hoverText:
+                listener.state === "running" ? "Stop Server" : undefined,
             }}
           />
           <DropdownMenu modal={false}>
@@ -248,7 +357,10 @@ export const Home = () => {
             <DropdownMenuContent className="w-fit" side="top" align="end">
               <DropdownMenuItem
                 disabled={!snapshot}
-                onClick={() => snapshot && openPath(snapshot.frozenClientRoot || snapshot.appRoot)}
+                onClick={() =>
+                  snapshot &&
+                  openPath(snapshot.frozenClientRoot || snapshot.appRoot)
+                }
               >
                 <FolderOpenIcon />
                 Browse Local Files
@@ -261,7 +373,10 @@ export const Home = () => {
           </DropdownMenu>
         </div>
       </div>
-      <GameSettings open={showGameSettings} onOpenChange={setShowGameSettings} />
+      <GameSettings
+        open={showGameSettings}
+        onOpenChange={setShowGameSettings}
+      />
     </>
   );
 };

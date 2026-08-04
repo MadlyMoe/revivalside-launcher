@@ -16,6 +16,7 @@ export const revivalSideSettingsSchema = z.object({
   clientPath: z.string().default(""),
   sourceClientPath: z.string().default(""),
   eventDate: z.string().default("2025-04-10"),
+  loginBackground: z.string().default("auto"),
   httpPort: z.int().min(1).max(65535).default(8088),
   keepOfficialFriendCode: z.boolean().default(false),
   keepOfficialUid: z.boolean().default(false),
@@ -29,4 +30,5 @@ export const revivalSideSettingsSchema = z.object({
   updateMatchingImport: z.boolean().default(true),
   verboseLogging: z.boolean().default(false),
   wikiPort: z.int().min(1).max(65535).default(5174),
+  modSidePort: z.int().min(1).max(65535).default(5175),
 });
