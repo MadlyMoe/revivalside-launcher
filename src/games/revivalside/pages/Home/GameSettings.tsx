@@ -13,6 +13,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ask, open as openDialog } from "@tauri-apps/plugin-dialog";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Select,
   SelectContent,
@@ -35,6 +37,16 @@ const localDateTimeValue = () => {
     .slice(0, 16);
 };
 
+interface TailscaleSetupResult {
+  installed: boolean;
+  connected: boolean;
+  configured?: boolean;
+  message: string;
+  downloadUrl?: string;
+  loginUrl?: string;
+  shareCode?: string;
+}
+
 export const GameSettings: FC<ComponentProps<typeof Dialog>> = ({
   ...props
 }) => {
@@ -50,7 +62,15 @@ export const GameSettings: FC<ComponentProps<typeof Dialog>> = ({
     runAction,
   } = useLauncherState();
   const [serverTime, setServerTime] = useState(localDateTimeValue);
+  const [tailscaleMessage, setTailscaleMessage] = useState(
+    "Host clicks once and sends the copied code. Guest pastes it and clicks once.",
+  );
   const listenerLocked = services.listener.state !== "stopped";
+  const relayPvpMode =
+    settings.privatePvpMode === "host" || settings.privatePvpMode === "join";
+  const legacyPvpMode =
+    settings.privatePvpMode === "legacy-host" ||
+    settings.privatePvpMode === "legacy-join";
 
   const reset = async () => {
     const confirmed = await ask(
@@ -74,6 +94,36 @@ export const GameSettings: FC<ComponentProps<typeof Dialog>> = ({
       await runAction("set-source-client", { path: selected });
   };
 
+  const browseRelayFile = async (
+    key:
+      | "relaySshKeyPath"
+      | "relayTlsCertificatePath"
+      | "relayTlsPrivateKeyPath",
+    title: string,
+  ) => {
+    const selected = await openDialog({ title, multiple: false, directory: false });
+    if (typeof selected === "string") setSetting(key, selected);
+  };
+
+  const runTailscaleSetup = async (
+    action: "tailscale-status" | "configure-tailscale-host" | "configure-tailscale-guest",
+  ) => {
+    try {
+      const result = await runAction<TailscaleSetupResult>(
+        action,
+        action === "configure-tailscale-guest"
+          ? { hostCode: settings.privatePvpHostUrl }
+          : undefined,
+      );
+      setTailscaleMessage(result.message);
+      if (result.shareCode) await writeText(result.shareCode);
+      if (!result.installed && result.downloadUrl) await openUrl(result.downloadUrl);
+      else if (!result.connected && result.loginUrl) await openUrl(result.loginUrl);
+    } catch {
+      // The shared launcher state displays the backend's actionable error.
+    }
+  };
+
   return (
     <Dialog {...props}>
       <DialogContent className="sm:max-w-4xl" showCloseButton={false}>
@@ -84,6 +134,9 @@ export const GameSettings: FC<ComponentProps<typeof Dialog>> = ({
             </TabsTrigger>
             <TabsTrigger size="xl" value="listener">
               Listener
+            </TabsTrigger>
+            <TabsTrigger size="xl" value="pvp">
+              PvP
             </TabsTrigger>
             <TabsTrigger size="xl" value="advanced">
               Advanced
@@ -361,6 +414,403 @@ export const GameSettings: FC<ComponentProps<typeof Dialog>> = ({
                   ))}
                 </FieldGroup>
               </FieldSet>
+            </TabsContent>
+            <TabsContent value="pvp">
+              <FieldSetGroup>
+                <FieldSet>
+                  <FieldLegend>Easy Legacy P2P with Tailscale</FieldLegend>
+                  <FieldDescription>
+                    Both PCs install Tailscale and sign into the same tailnet once.
+                    RevivalSide detects the private address, checks the guest can
+                    reach the host, and fills the Legacy P2P settings automatically.
+                  </FieldDescription>
+                  <FieldGroup>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="lg"
+                        variant="secondary"
+                        disabled={!!busyAction || listenerLocked}
+                        onClick={() => void runTailscaleSetup("tailscale-status")}
+                      >
+                        <Spinner hidden={busyAction !== "tailscale-status"} />
+                        Install / connect Tailscale
+                      </Button>
+                      <Button
+                        size="lg"
+                        disabled={!!busyAction || listenerLocked}
+                        onClick={() => void runTailscaleSetup("configure-tailscale-host")}
+                      >
+                        <Spinner hidden={busyAction !== "configure-tailscale-host"} />
+                        Host & copy code
+                      </Button>
+                    </div>
+                    <Field>
+                      <FieldLabel htmlFor="tailscale-host-code">
+                        Guest: paste the host code
+                      </FieldLabel>
+                      <Input
+                        id="tailscale-host-code"
+                        value={settings.privatePvpHostUrl}
+                        placeholder="http://100.64.0.10:8088"
+                        onChange={(event) =>
+                          setSetting("privatePvpHostUrl", event.target.value)
+                        }
+                        disabled={listenerLocked}
+                      />
+                      <Button
+                        size="lg"
+                        disabled={
+                          !settings.privatePvpHostUrl || !!busyAction || listenerLocked
+                        }
+                        onClick={() => void runTailscaleSetup("configure-tailscale-guest")}
+                      >
+                        <Spinner hidden={busyAction !== "configure-tailscale-guest"} />
+                        Join host
+                      </Button>
+                    </Field>
+                    <FieldDescription>{tailscaleMessage}</FieldDescription>
+                    {lastError && <FieldDescription>{lastError}</FieldDescription>}
+                  </FieldGroup>
+                </FieldSet>
+
+                <FieldSet>
+                  <FieldLegend>Friendly Battle connection</FieldLegend>
+                  <FieldDescription>
+                    Both players need the same frozen client and content
+                    version. Relay changes take effect when the listener next
+                    starts.
+                  </FieldDescription>
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel>Connection mode</FieldLabel>
+                      <Select
+                        value={settings.privatePvpMode}
+                        onValueChange={(value) =>
+                          setSetting(
+                            "privatePvpMode",
+                            value as typeof settings.privatePvpMode,
+                          )
+                        }
+                        disabled={listenerLocked}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value="off">Disabled</SelectItem>
+                            <SelectItem value="host">Relay: Host a match</SelectItem>
+                            <SelectItem value="join">Relay: Join a host</SelectItem>
+                            <SelectItem value="legacy-host">
+                              Legacy P2P: Host (LAN/VPN)
+                            </SelectItem>
+                            <SelectItem value="legacy-join">
+                              Legacy P2P: Join (LAN/VPN)
+                            </SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    {relayPvpMode && (
+                      <>
+                        <Field>
+                          <FieldLabel htmlFor="pvp-relay-url">Relay URL</FieldLabel>
+                          <Input
+                            id="pvp-relay-url"
+                            type="url"
+                            value={settings.privatePvpRelayUrl}
+                            placeholder="https://relay.example.com"
+                            onChange={(event) =>
+                              setSetting("privatePvpRelayUrl", event.target.value)
+                            }
+                            disabled={listenerLocked}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="pvp-relay-secret">
+                            Relay access secret
+                          </FieldLabel>
+                          <Input
+                            id="pvp-relay-secret"
+                            type="password"
+                            autoComplete="off"
+                            value={settings.privatePvpRelaySecret}
+                            placeholder="Generate or paste the shared relay secret"
+                            onChange={(event) =>
+                              setSetting("privatePvpRelaySecret", event.target.value)
+                            }
+                            disabled={listenerLocked}
+                          />
+                        </Field>
+                        {settings.privatePvpMode === "host" && (
+                          <Field>
+                            <FieldLabel htmlFor="pvp-relay-host-id">
+                              Host relay ID
+                            </FieldLabel>
+                            <Input
+                              id="pvp-relay-host-id"
+                              value={settings.privatePvpRelayHostId}
+                              placeholder="Generated per host launcher"
+                              onChange={(event) =>
+                                setSetting("privatePvpRelayHostId", event.target.value)
+                              }
+                              disabled={listenerLocked}
+                            />
+                          </Field>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="lg"
+                            disabled={!!busyAction || listenerLocked}
+                            onClick={() => void runAction("generate-relay-credentials")}
+                          >
+                            <Spinner
+                              hidden={busyAction !== "generate-relay-credentials"}
+                            />{" "}
+                            Generate credentials
+                          </Button>
+                          <Button
+                            size="lg"
+                            variant="secondary"
+                            disabled={!settings.privatePvpRelayUrl || !!busyAction}
+                            onClick={() => void runAction("test-relay")}
+                          >
+                            <Spinner hidden={busyAction !== "test-relay"} /> Test
+                            relay
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                    {settings.privatePvpMode === "legacy-host" && (
+                      <Field>
+                        <FieldLabel htmlFor="pvp-public-host">
+                          LAN or private-VPN guest address
+                        </FieldLabel>
+                        <Input
+                          id="pvp-public-host"
+                          value={settings.privatePvpPublicHost}
+                          placeholder="100.64.0.10"
+                          onChange={(event) =>
+                            setSetting("privatePvpPublicHost", event.target.value)
+                          }
+                          disabled={listenerLocked}
+                        />
+                      </Field>
+                    )}
+                    {settings.privatePvpMode === "legacy-join" && (
+                      <Field>
+                        <FieldLabel htmlFor="pvp-host-url">
+                          LAN or private-VPN host URL
+                        </FieldLabel>
+                        <Input
+                          id="pvp-host-url"
+                          type="url"
+                          value={settings.privatePvpHostUrl}
+                          placeholder="http://100.64.0.10:8088"
+                          onChange={(event) =>
+                            setSetting("privatePvpHostUrl", event.target.value)
+                          }
+                          disabled={listenerLocked}
+                        />
+                      </Field>
+                    )}
+                  </FieldGroup>
+                  <FieldDescription>
+                    {relayPvpMode &&
+                      "Relay mode keeps ports 22000/8088 loopback-only and carries both players over outbound encrypted connections."}
+                    {legacyPvpMode &&
+                      "Legacy P2P directly exposes the host's TCP 22000 and HTTP 8088 listeners. Use it only on a trusted LAN or private VPN. Never port-forward these ports to the public internet."}
+                    {settings.privatePvpMode === "off" &&
+                      "Choose the encrypted relay for internet play, or Legacy P2P only for a trusted LAN or private VPN."}
+                  </FieldDescription>
+                </FieldSet>
+
+                <FieldSet>
+                  <FieldLegend>One-click relay server setup</FieldLegend>
+                  <FieldDescription>
+                    Deploys the bundled relay to an Ubuntu/Debian VPS through
+                    SSH, installs a locked-down systemd service, starts it, and
+                    verifies its HTTPS health endpoint.
+                  </FieldDescription>
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor="relay-ssh-host">SSH host</FieldLabel>
+                      <Input
+                        id="relay-ssh-host"
+                        value={settings.relaySshHost}
+                        placeholder="203.0.113.10"
+                        onChange={(event) =>
+                          setSetting("relaySshHost", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field>
+                        <FieldLabel htmlFor="relay-ssh-port">
+                          SSH port
+                        </FieldLabel>
+                        <Input
+                          id="relay-ssh-port"
+                          type="number"
+                          min={1}
+                          max={65535}
+                          value={settings.relaySshPort}
+                          onChange={(event) =>
+                            setSetting("relaySshPort", Number(event.target.value))
+                          }
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="relay-ssh-user">
+                          SSH user
+                        </FieldLabel>
+                        <Input
+                          id="relay-ssh-user"
+                          value={settings.relaySshUser}
+                          placeholder="deploy"
+                          onChange={(event) =>
+                            setSetting("relaySshUser", event.target.value)
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <Field>
+                      <FieldLabel>SSH private key</FieldLabel>
+                      <div className="flex gap-2">
+                        <Input value={settings.relaySshKeyPath} readOnly />
+                        <Button
+                          variant="secondary"
+                          onClick={() =>
+                            void browseRelayFile(
+                              "relaySshKeyPath",
+                              "Select SSH private key",
+                            )
+                          }
+                        >
+                          Browse
+                        </Button>
+                      </div>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="relay-ssh-host-key">
+                        SSH host-key fingerprint
+                      </FieldLabel>
+                      <Input
+                        id="relay-ssh-host-key"
+                        value={settings.relaySshHostKeyFingerprint}
+                        placeholder="SHA256:..."
+                        onChange={(event) =>
+                          setSetting(
+                            "relaySshHostKeyFingerprint",
+                            event.target.value,
+                          )
+                        }
+                      />
+                      <FieldDescription>
+                        Copy this from the VPS provider console using ssh-keygen
+                        -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256.
+                      </FieldDescription>
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field>
+                        <FieldLabel htmlFor="relay-hostname">
+                          Public relay hostname
+                        </FieldLabel>
+                        <Input
+                          id="relay-hostname"
+                          value={settings.relayHostname}
+                          placeholder="relay.example.com"
+                          onChange={(event) =>
+                            setSetting("relayHostname", event.target.value)
+                          }
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="relay-port">
+                          Relay HTTPS port
+                        </FieldLabel>
+                        <Input
+                          id="relay-port"
+                          type="number"
+                          min={1}
+                          max={65535}
+                          value={settings.relayPort}
+                          onChange={(event) =>
+                            setSetting("relayPort", Number(event.target.value))
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <Field>
+                      <FieldLabel>TLS certificate (PEM)</FieldLabel>
+                      <div className="flex gap-2">
+                        <Input
+                          value={settings.relayTlsCertificatePath}
+                          readOnly
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() =>
+                            void browseRelayFile(
+                              "relayTlsCertificatePath",
+                              "Select relay TLS certificate",
+                            )
+                          }
+                        >
+                          Browse
+                        </Button>
+                      </div>
+                    </Field>
+                    <Field>
+                      <FieldLabel>TLS private key (PEM)</FieldLabel>
+                      <div className="flex gap-2">
+                        <Input
+                          value={settings.relayTlsPrivateKeyPath}
+                          readOnly
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() =>
+                            void browseRelayFile(
+                              "relayTlsPrivateKeyPath",
+                              "Select relay TLS private key",
+                            )
+                          }
+                        >
+                          Browse
+                        </Button>
+                      </div>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="relay-install-path">
+                        VPS install path
+                      </FieldLabel>
+                      <Input
+                        id="relay-install-path"
+                        value={settings.relayInstallPath}
+                        onChange={(event) =>
+                          setSetting("relayInstallPath", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Button
+                      size="lg"
+                      disabled={!!busyAction}
+                      onClick={() => void runAction("deploy-relay")}
+                    >
+                      <Spinner hidden={busyAction !== "deploy-relay"} /> Deploy,
+                      start, and verify relay
+                    </Button>
+                  </FieldGroup>
+                  <FieldDescription>
+                    The SSH account must use key authentication and be root or
+                    have passwordless sudo. DNS must already point to the VPS, the certificate
+                    must cover that hostname, and inbound TCP 443 (or the chosen
+                    relay port) must be open. SSH credentials and TLS private
+                    keys are never shared with players.
+                  </FieldDescription>
+                </FieldSet>
+              </FieldSetGroup>
             </TabsContent>
             <TabsContent value="advanced">
               <FieldSetGroup>

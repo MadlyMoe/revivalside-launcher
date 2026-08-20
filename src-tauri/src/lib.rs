@@ -232,29 +232,6 @@ fn run_action_sync(
     action: String,
     payload: Value,
 ) -> Result<Value, String> {
-    const ACTIONS: &[&str] = &[
-        "snapshot",
-        "save-settings",
-        "set-client",
-        "set-source-client",
-        "detect-client",
-        "freeze-client",
-        "launch-client",
-        "verify-assets",
-        "build-cache",
-        "prepare-modside-assets",
-        "extract-modside-assets",
-        "set-server-time",
-        "clear-server-time",
-        "export-cross-save",
-        "extract-cross-save",
-        "refresh-wiki-cache",
-        "refresh-cutscene-cache",
-    ];
-    if !ACTIONS.contains(&action.as_str()) {
-        return Err(format!("Unsupported launcher action: {action}"));
-    }
-
     let mut command = backend_command(&app_root)?;
     command.arg(&action);
     let mut child = command.spawn().map_err(|error| error.to_string())?;

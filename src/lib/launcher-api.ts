@@ -19,6 +19,22 @@ export interface RevivalSideSettings {
   replayCapturedGameFlow: boolean;
   skipTutorial: boolean;
   resetTutorialOnLogin: boolean;
+  privatePvpMode: "off" | "host" | "join" | "legacy-host" | "legacy-join";
+  privatePvpPublicHost: string;
+  privatePvpHostUrl: string;
+  privatePvpRelayUrl: string;
+  privatePvpRelaySecret: string;
+  privatePvpRelayHostId: string;
+  relaySshHost: string;
+  relaySshPort: number;
+  relaySshUser: string;
+  relaySshKeyPath: string;
+  relaySshHostKeyFingerprint: string;
+  relayHostname: string;
+  relayPort: number;
+  relayTlsCertificatePath: string;
+  relayTlsPrivateKeyPath: string;
+  relayInstallPath: string;
   minimizeToTray: boolean;
   notifyServiceStops: boolean;
   advancedEnvironment: string;
@@ -78,6 +94,22 @@ export const DEFAULT_REVIVALSIDE_SETTINGS: RevivalSideSettings = {
   replayCapturedGameFlow: false,
   skipTutorial: false,
   resetTutorialOnLogin: false,
+  privatePvpMode: "off",
+  privatePvpPublicHost: "",
+  privatePvpHostUrl: "",
+  privatePvpRelayUrl: "",
+  privatePvpRelaySecret: "",
+  privatePvpRelayHostId: "",
+  relaySshHost: "",
+  relaySshPort: 22,
+  relaySshUser: "",
+  relaySshKeyPath: "",
+  relaySshHostKeyFingerprint: "",
+  relayHostname: "",
+  relayPort: 443,
+  relayTlsCertificatePath: "",
+  relayTlsPrivateKeyPath: "",
+  relayInstallPath: "/opt/revivalside-relay",
   minimizeToTray: true,
   notifyServiceStops: true,
   advancedEnvironment: "",
