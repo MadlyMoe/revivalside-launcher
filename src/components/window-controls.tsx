@@ -5,12 +5,14 @@ import { MinusIcon, XIcon, SquareIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export const WindowControls = () => {
-  const { settings } = useSettings();
+  const { settings: appSettings, saveSettings } = useSettings();
   const win = getCurrentWindow();
   const [isResiazble, setIsResizable] = useState(false);
 
   const handleClose = async () => {
-    await invoke("close_window", { behavior: settings.closeWindow });
+    const behavior = appSettings.closeWindow === "tray_on_start" ? "exit" : appSettings.closeWindow;
+    await saveSettings();
+    await invoke("close_window", { behavior });
   };
 
   useEffect(() => {

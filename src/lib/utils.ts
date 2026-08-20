@@ -46,10 +46,16 @@ export const getGameAssets = (gameId: string): GameAssets => {
     .filter(([path]) => path.includes(`/assets/${gameId}/bg/`))
     .map(([, url]) => url as string);
 
-  console.log(mainBackground, allMainBgs, allFeaturedBgs, gameId);
-
   const favicon = Object.entries(allFavicons).find(([path]) => path.includes(`/assets/${gameId}/`))?.[1] as string;
   const logo = Object.entries(allLogos).find(([path]) => path.includes(`/assets/${gameId}/`))?.[1] as string;
 
   return { backgrounds, favicon, logo, mainBackground, featuredBackground };
+};
+
+export const formatHms = (seconds: number) => {
+  const s = Math.max(0, Math.floor(seconds));
+  const hh = String(Math.floor(s / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
 };
